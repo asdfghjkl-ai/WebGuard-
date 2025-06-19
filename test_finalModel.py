@@ -40,7 +40,7 @@ fold_idx = 0
 num_mlp_layers = 2  # 每个MLP的层数
 final_dropout = 0.5
 
-# 图池化与聚合参数
+
 graph_pooling_type = "sum"
 neighbor_pooling_type = "sum"
 learn_eps = False
@@ -56,7 +56,7 @@ division_func = division_func_map.get(division_method, None)
 degree_as_tag = bool(degree_as_tag)
 num_classes = 2
 
-ym_select_sub_num = 4  # 随机抽几个图
+ym_select_sub_num = 4  
 # 导入所需模块
 from gensim.test.utils import get_tmpfile, common_texts  # 内置测试数据和模型路径
 from gensim.models import Word2Vec, KeyedVectors
@@ -80,13 +80,13 @@ def build_dom_graph(soup):
     stack = [(soup, 0, None)]
     node_id = 1
     node_attributes = {}
-    tags = {}  # 节点标签集合
-    node_tags = []  # 节点标签
+    tags = {}  
+    node_tags = []  
     while stack:
         node, current_id, parent_id = stack.pop()
         if node is not None and node.name:
             node_attributes[current_id] = {
-                'tag': node.name,  # 标签类型
+                'tag': node.name, 
                 'attributes': dict(node.attrs),
                 'text': node.get_text(strip=True)
             }
@@ -129,8 +129,8 @@ def get_graph_from_html(html_content, label):
         attr1_vector = get_text_vector(node_data["tag"])
         attr1_vector = np.concatenate(
             (
-                np.array([len(node_data['attributes'])]),  # 转换为一维数组
-                np.array([len(node_data['text'])]),  # 转换为一维数组
+                np.array([len(node_data['attributes'])]),  
+                np.array([len(node_data['text'])]), 
                 attr1_vector
             )
         )
@@ -194,7 +194,7 @@ def dataprocess(filename, input_ids, input_types, input_masks, label):
             types = types[:pad_size]
             masks = masks[:pad_size]
             ids = ids[:pad_size]
-        html = row['HTML_Content']  # 列名为 'HTML_Content'
+        html = row['HTML_Content'] 
         if isinstance(html, float) and math.isnan(html):
             print(f"Skipping index {index} due to NaN in HTML_Content")
             continue  # 跳过当前循环
@@ -225,11 +225,9 @@ def separate_data(graph_list, input_ids, input_types, input_masks, labels, seed,
 
     train_idx, test_idx = idx_list[fold_idx]
 
-    # 划分图数据集
     train_graph_list = [graph_list[i] for i in train_idx]
     test_graph_list = [graph_list[i] for i in test_idx]
 
-    # 划分文本数据
     train_input_ids = [input_ids[i] for i in train_idx]
     test_input_ids = [input_ids[i] for i in test_idx]
 
@@ -282,7 +280,6 @@ class myConvBertModel(nn.Module):
         # 加载预训练的 ConvBERT 模型
         config = ConvBertConfig.from_pretrained("convbert-base", output_hidden_states=True)
 
-        # 加载ConvBERT模型
         self.convbert = ConvBertModel.from_pretrained('convbert-base', config=config)
 
         # 打开参数
@@ -334,7 +331,6 @@ class FinalModel(nn.Module):
         )
         self.graph_fc = nn.Linear(in_features=302, out_features=768)
         self.fused_fc = nn.Linear(5, 1)
-        # 最终分类层
         self.classifier = nn.Linear(gnn_hidden_dim + bert_hidden_dim, num_classes)
 
     def forward(self, batch_graph, input_ids, input_types, input_masks):
@@ -385,7 +381,7 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
 
         start_idx = idx * batch_size
         end_idx = (idx + 1) * batch_size - 1
-        if end_idx >= true_graph_num: end_idx = true_graph_num - 1  # 如果索引超过
+        if end_idx >= true_graph_num: end_idx = true_graph_num - 1  
         graphs = train_graphs[start_idx:end_idx + 1]
         graphs_sub = []
         for i, graph in enumerate(graphs):
@@ -403,7 +399,7 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
             # 前向传播
             outputs = model(batch_subgraphs, train_input_ids, train_input_masks, train_input_types)
             loss = criterion(outputs, train_labels)
-            # 反向传播和优化
+            
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -426,7 +422,7 @@ def test_final_model(model, test_graphs, test_loader, device):
             start_idx = idx * batch_size
             end_idx = (idx + 1) * batch_size - 1
             if end_idx >= true_graph_num: end_idx = true_graph_num - 1  # 如果索引超过
-            graphs = test_graphs[start_idx:end_idx + 1]  # 提取该范围内的 graph 列表
+            graphs = test_graphs[start_idx:end_idx + 1]  
             graphs_sub = []
             for i, graph in enumerate(graphs):
                 subgraphs = sum([division_func(graph, features_func, hash_func, num_group)], start=[])
@@ -442,7 +438,7 @@ def test_final_model(model, test_graphs, test_loader, device):
                 }
                 for _ in range(batch_size)
             ]
-            for pos in range(iters_per_epoch):  # 添加投票机制，至少两个预测为坏图就是坏图
+            for pos in range(iters_per_epoch):  
                 batch_subgraphs = []
                 for subgraphs in graphs_sub:
                     selected = random.sample(subgraphs, ym_select_sub_num)
@@ -452,11 +448,11 @@ def test_final_model(model, test_graphs, test_loader, device):
                 # 前向传播
                 outputs = model(batch_subgraphs, test_input_ids, test_input_masks, test_input_types)
 
-                # 计算预测结果
+                
                 scores = nn.functional.softmax(outputs, dim=1)[:, 1].cpu().numpy()
                 _, predicted = torch.max(outputs, 1)
                 predicted = predicted.cpu().numpy()
-                # 更新 vote 数组
+               
                 for i in range(len(predicted)):
                     if predicted[i] == 0:
                         vote[i]['0count'] += 1
@@ -471,9 +467,9 @@ def test_final_model(model, test_graphs, test_loader, device):
                 else:
                     y_pred.extend([0])
                     y_scores.extend([vote[i]['0scores']])
-    # 计算混淆矩阵
+    
     cm = confusion_matrix(y_true, y_pred)
-    # 动态处理不同矩阵形状
+    
     if cm.shape == (2, 2):
         tn, fp, fn, tp = cm.ravel()
     elif cm.shape == (1, 1):
@@ -590,9 +586,8 @@ true_graph_num = 0
 bad_graph_num = 0
 start_time = time.time()
 for index, row in data.iterrows():
-    label = row['label']  # 列名为 'label'
+    label = row['label'] 
     html = row['HTML_Content']
-    # 检测 HTML_Content 是否为 NaN
     if isinstance(html, float) and math.isnan(html):
         print(f"Skipping index {index} due to NaN in HTML_Content")
         continue
