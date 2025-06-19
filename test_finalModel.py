@@ -618,7 +618,7 @@ gnn_model = GraphCNN(num_layers, num_mlp_layers, input_dim, hidden_dim,
                      num_classes, final_dropout, learn_eps, graph_pooling_type,
                      neighbor_pooling_type, device).to(device)
 bert_model = myConvBertModel().to(device)
-model = FinalModel(gnn_model, bert_model, gnn_hidden_dim=768, bert_hidden_dim=768, num_classes=2)
+model = FinalModel(gnn_model, bert_model, gnn_hidden_dim=input_dim, bert_hidden_dim=input_dim, num_classes=2) # Setting the input_dim according to the model,such as 768
 model.to(device)
 model.load_state_dict(torch.load('best_model.pth'))
 #验证
