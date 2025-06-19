@@ -52,8 +52,7 @@ graph_pooling_type = "sum" # 图级池化方式
 neighbor_pooling_type = "sum" # 邻居节点聚合方式
 learn_eps = False
 
-# 对抗训练与图划分
-num_group = 5 # 将图划分的子图组数（用于对抗训练）
+num_group = 5 
 hash_method = "md5"
 features_method = "id"
 division_method = "node"
@@ -81,12 +80,12 @@ def parse_html(html_string):
     soup = BeautifulSoup(html_string, 'html.parser')
     return soup
 def build_dom_graph(soup):
-    G = nx.DiGraph()  # 使用有向图表示DOM树
-    stack = [(soup, 0, None)]  # (节点, 当前节点ID, 父节点ID)
+    G = nx.DiGraph() 
+    stack = [(soup, 0, None)]  
     node_id = 1
     node_attributes = {}
-    tags = {}  # 节点标签集合
-    node_tags = []  # 节点标签
+    tags = {}  
+    node_tags = []  
     while stack:
         node, current_id, parent_id = stack.pop()
         if node is not None and node.name:
@@ -99,7 +98,7 @@ def build_dom_graph(soup):
                 mapped = len(tags)
                 tags[node.name] = mapped
             node_tags.append(tags[node.name])
-            G.add_node(current_id,**node_attributes[current_id])  # 添加节点 和属性
+            G.add_node(current_id,**node_attributes[current_id])  
             if parent_id is not None:
                 G.add_edge(parent_id, current_id)
             children = [child for child in node.children if hasattr(child, 'name')]
@@ -114,7 +113,6 @@ def get_graph_from_html(html_content,label):
     G, node_attributes,node_tags = build_dom_graph(soup)
     for node_id, node_data in node_attributes.items():
         for key, value in node_data.items():
-            # 将属性值转换为字符串
             node_data[key] = str(value)
     
     model = Word2Vec(sentences=common_texts, vector_size=100, window=5, min_count=1, workers=4)
@@ -133,8 +131,8 @@ def get_graph_from_html(html_content,label):
         attr1_vector = get_text_vector(node_data["tag"])
         attr1_vector = np.concatenate(
             (
-                np.array([len(node_data['attributes'])]),  # 转换为一维数组
-                np.array([len(node_data['text'])]),  # 转换为一维数组
+                np.array([len(node_data['attributes'])]),  #
+                np.array([len(node_data['text'])]),  #
                 attr1_vector
             )
         )
@@ -155,10 +153,10 @@ def get_graph_from_html(html_content,label):
     graph.node_tags=node_tags
     graph.node_features=torch.FloatTensor(feature_matrix)
     edges = []
-    node_index = {node: idx for idx, node in enumerate(node_ids)}  # 生成索引映射
+    node_index = {node: idx for idx, node in enumerate(node_ids)}  
     for u, v in G.edges():
         edges.append([node_index[u], node_index[v]])
-        edges.append([node_index[v], node_index[u]])  # 添加反向边
+        edges.append([node_index[v], node_index[u]])  
     graph.edge_mat = torch.LongTensor(edges).t().contiguous()
     graph.neighbors = [
         [node_index[neighbor] for neighbor in G.neighbors(node_id)]
@@ -193,7 +191,7 @@ def dataprocess(filename, input_ids, input_types, input_masks, label):
             types = types[:pad_size]
             masks = masks[:pad_size]
             ids = ids[:pad_size]
-        html = row['HTML_Content']  # 列名为 'HTML_Content'
+        html = row['HTML_Content'] 
         if isinstance(html, float) and math.isnan(html):
             print(f"Skipping index {index} due to NaN in HTML_Content")
             continue  # 跳过当前循环
@@ -219,11 +217,9 @@ def separate_data(graph_list, input_ids, input_types, input_masks, labels, seed,
 
     train_idx, test_idx = idx_list[fold_idx]
 
-    # 划分图数据集
     train_graph_list = [graph_list[i] for i in train_idx]
     test_graph_list = [graph_list[i] for i in test_idx]
 
-    # 划分文本数据
     train_input_ids = [input_ids[i] for i in train_idx]
     test_input_ids = [input_ids[i] for i in test_idx]
 
@@ -292,7 +288,6 @@ class myConvBertModel(nn.Module):
         hidden_layers = hidden_states[:-1]
         hidden_layers_tensor = torch.stack(hidden_layers, dim=0).permute(1, 0, 2, 3)
 
-        # 借助TAMM多尺度提取特征
         model_tamm = TAMM(channel=12).to(device)
         pos_pooled = model_tamm.forward(hidden_layers_tensor)
         compressed_feature_tensor = torch.mean(pos_pooled, dim=2)
@@ -320,7 +315,6 @@ class FinalModel(nn.Module):
         )
         self.graph_fc = nn.Linear(in_features=302, out_features=768)
         self.fused_fc = nn.Linear(5,1)
-        # 最终分类层
         self.classifier = nn.Linear(gnn_hidden_dim + bert_hidden_dim, num_classes)
 
     def forward(self, batch_graph, input_ids, input_types, input_masks):
@@ -331,7 +325,6 @@ class FinalModel(nn.Module):
                                           extract_features=True)
         text_embeddings = text_embeddings.repeat_interleave(ym_select_sub_num, dim=0) # 3,dim = 0
         text_embeddings = text_embeddings.unsqueeze(0).repeat(5, 1, 1)
-        # 拆分两个模态的特征，分别融合，融合完再拼接
         split_tensor1 = torch.split(graph_embeddings_tensor, ym_select_sub_num, dim=1)  # [batch_size 个 [5, 3, 768]]
         split_tensor2 = torch.split(text_embeddings, ym_select_sub_num, dim=1)
         assert len(split_tensor1) == len(split_tensor2), "拆分后的子张量数量不一致"
@@ -348,7 +341,7 @@ class FinalModel(nn.Module):
             fused_output = self.fused_fc(fused_output).to(device)
             fused_output = fused_output.transpose(0, 1).to(device)
             fused_outputs.append(fused_output)
-        # 拼接回原始形状
+            
         fused_outputs = torch.cat(fused_outputs, dim=0)
         # 分类
         logits = self.classifier(fused_outputs)
@@ -372,7 +365,7 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
         start_idx = idx * batch_size
         end_idx = (idx + 1) * batch_size - 1
         if end_idx >= true_graph_num: end_idx = true_graph_num - 1  # 如果索引超过
-        graphs = train_graphs[start_idx:end_idx + 1]  # 提取该范围内的 graph 列表
+        graphs = train_graphs[start_idx:end_idx + 1]  
         graphs_sub = []
         for i, graph in enumerate(graphs):
             subgraphs = sum([division_func(graph, features_func, hash_func, num_group)], start=[])
