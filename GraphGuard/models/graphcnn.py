@@ -9,26 +9,6 @@ from GraphGuard.models.mlp import MLP
 
 class GraphCNN(nn.Module):
     def __init__(self, num_layers, num_mlp_layers, input_dim, hidden_dim, output_dim, final_dropout, learn_eps, graph_pooling_type, neighbor_pooling_type, device):
-        '''
-            num_layers: number of layers in the neural networks (INCLUDING the input layer)
-            num_mlp_layers: number of layers in mlps (EXCLUDING the input layer)
-            input_dim: dimensionality of input features
-            hidden_dim: dimensionality of hidden units at ALL layers
-            output_dim: number of classes for prediction
-            final_dropout: dropout ratio on the final linear layer
-            learn_eps: If True, learn epsilon to distinguish center nodes from neighboring nodes. If False, aggregate neighbors and center nodes altogether. 
-            neighbor_pooling_type: how to aggregate neighbors (mean, average, or max)
-            graph_pooling_type: how to aggregate entire nodes in a graph (mean, average)
-            device: which device to use
-            num_layers：总层数（包括输入层）。
-            num_mlp_layers：每个 MLP 的层数（不包括输入层）。
-            input_dim：节点特征的维度。
-            hidden_dim：隐藏层维度。
-            output_dim：分类类别数。
-            learn_eps：是否学习中心节点权重系数 ε。
-            graph_pooling_type：图级池化方式（sum 或 average）。
-            neighbor_pooling_type：邻居节点池化方式（sum、average、max）。
-        '''
 
         super(GraphCNN, self).__init__()
 
@@ -92,25 +72,20 @@ class GraphCNN(nn.Module):
 
 
     def __preprocess_neighbors_sumavepool(self, batch_graph):
-        ###create block diagonal sparse matrixf #创建块对角稀疏矩阵（拼接子图创建新的领接矩阵）
 
         edge_mat_list = []
         start_idx = [0]
         for i, graph in enumerate(batch_graph):
-            #########################################
-            # 获取当前子图的节点数
             num_nodes = len(graph.g)
-            # 创建节点索引映射表
             node_mapping = {node: idx for idx, node in enumerate(graph.g.nodes)}
-            # 重新映射边矩阵的索引
-            edge_mat = graph.edge_mat.numpy()  # 转换为 numpy 数组以便处理
+            edge_mat = graph.edge_mat.numpy()  
             mapped_edge_mat = [[node_mapping[edge[0]], node_mapping[edge[1]]] for edge in edge_mat.T]
             mapped_edge_mat = torch.LongTensor(mapped_edge_mat).reshape(2, -1)
-            # 更新 edge_mat_list
+       
             edge_mat_list.append(mapped_edge_mat + start_idx[i])
-            # 更新 start_idx
+       
             start_idx.append(start_idx[i] + num_nodes)
-            ###################################################
+            
             # start_idx.append(start_idx[i] + len(graph.g))
             # edge_mat_list.append(graph.edge_mat + start_idx[i])
         Adj_block_idx = torch.cat(edge_mat_list, 1)
@@ -138,7 +113,7 @@ class GraphCNN(nn.Module):
         idx = []
         elem = []
         for i, graph in enumerate(batch_graph):
-            if not graph.g:#######################minmin
+            if not graph.g:
                 print(f"Warning: Graph {i} has no nodes. Skipping...")
                 continue
             ###average pooling
@@ -242,7 +217,7 @@ class GraphCNN(nn.Module):
         score_over_layer = 0
 
         # perform pooling over all nodes in each graph in every layer
-        graph_embeddings = []  # 用于存储每个图的图级特征
+        graph_embeddings = [] 
         for layer, h in enumerate(hidden_rep):
             pooled_h = torch.spmm(graph_pool, h)
             score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout,
@@ -251,40 +226,8 @@ class GraphCNN(nn.Module):
                 graph_embeddings.append(pooled_h)
 
         if extract_features:
-            return graph_embeddings # 子图突击特征，形如【num_graphs,hidden_dim】,子图数量和隐藏层维度
+            return graph_embeddings 
         else:
             return score_over_layer
 ###################################################################
-    # def forward(self, batch_graph):
-    #     X_concat = torch.cat([graph.node_features for graph in batch_graph], 0).to(self.device)
-    #     graph_pool = self.__preprocess_graphpool(batch_graph)
-    #
-    #     if self.neighbor_pooling_type == "max":
-    #         padded_neighbor_list = self.__preprocess_neighbors_maxpool(batch_graph)
-    #     else:
-    #         Adj_block = self.__preprocess_neighbors_sumavepool(batch_graph)
-    #
-    #     #list of hidden representation at each layer (including input)
-    #     hidden_rep = [X_concat]
-    #     h = X_concat
-    #
-    #     for layer in range(self.num_layers-1):
-    #         if self.neighbor_pooling_type == "max" and self.learn_eps:
-    #             h = self.next_layer_eps(h, layer, padded_neighbor_list = padded_neighbor_list)
-    #         elif not self.neighbor_pooling_type == "max" and self.learn_eps:
-    #             h = self.next_layer_eps(h, layer, Adj_block = Adj_block)
-    #         elif self.neighbor_pooling_type == "max" and not self.learn_eps:
-    #             h = self.next_layer(h, layer, padded_neighbor_list = padded_neighbor_list)
-    #         elif not self.neighbor_pooling_type == "max" and not self.learn_eps:
-    #             h = self.next_layer(h, layer, Adj_block = Adj_block)
-    #
-    #         hidden_rep.append(h)
-    #
-    #     score_over_layer = 0
-    #
-    #     #perform pooling over all nodes in each graph in every layer
-    #     for layer, h in enumerate(hidden_rep):
-    #         pooled_h = torch.spmm(graph_pool, h)
-    #         score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout, training = self.training)
-    #
-    #     return score_over_layer
+    
