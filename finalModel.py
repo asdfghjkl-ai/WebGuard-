@@ -25,11 +25,10 @@ from tqdm import tqdm
 import os
 torch.cuda.empty_cache()  # 释放未使用的缓存
 
-# 数据集路径
 graphtype = 'ER'
 device = 1  # 指定GPU设备编号
 
-# GNNCERT模型参数
+#模型参数
 num_layers = 5  # 模型的层数
 hidden_dim = 768
 
@@ -43,13 +42,12 @@ seed = 42 # 随机种子
 
 # 交叉验证与模型结构
 fold_n = 2 # n折交叉验证的折数
-fold_idx = 0 # 当前使用二等交叉验证折索引
-num_mlp_layers = 2 # 每个MLP的层数
-final_dropout = 0.5 # 最终分离诶去的Dropout概率
+fold_idx = 0  
+num_mlp_layers = 2 
+final_dropout = 0.5 
 
-# 图池化与聚合参数
-graph_pooling_type = "sum" # 图级池化方式
-neighbor_pooling_type = "sum" # 邻居节点聚合方式
+graph_pooling_type = "sum" 
+neighbor_pooling_type = "sum" 
 learn_eps = False
 
 num_group = 5 
@@ -62,7 +60,7 @@ hash_func = hash_func_map.get(hash_method, hash)
 division_func = division_func_map.get(division_method, None)
 degree_as_tag = bool(degree_as_tag)
 num_classes = 2
-ym_select_sub_num = 4 # 随机抽几个图
+ym_select_sub_num = 4 
 # 导入所需模块
 from gensim.test.utils import get_tmpfile, common_texts
 from gensim.models import Word2Vec, KeyedVectors
@@ -75,7 +73,6 @@ device = torch.device("cuda:" + str(device)) if torch.cuda.is_available() else t
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 
-# 解析HTML并返回DOM树
 def parse_html(html_string):
     soup = BeautifulSoup(html_string, 'html.parser')
     return soup
@@ -90,7 +87,7 @@ def build_dom_graph(soup):
         node, current_id, parent_id = stack.pop()
         if node is not None and node.name:
             node_attributes[current_id] = {
-                'tag': node.name,  # 标签类型
+                'tag': node.name,
                 'attributes': dict(node.attrs),
                 'text': node.get_text(strip=True)
             }
@@ -194,7 +191,7 @@ def dataprocess(filename, input_ids, input_types, input_masks, label):
         html = row['HTML_Content'] 
         if isinstance(html, float) and math.isnan(html):
             print(f"Skipping index {index} due to NaN in HTML_Content")
-            continue  # 跳过当前循环
+            continue  
         input_ids.append(ids)
         input_types.append(types)
         input_masks.append(masks)
@@ -254,7 +251,7 @@ class GraphTextDataset(Dataset):
         input_type = self.input_types[idx]
 
         return graph, label, input_id, attention_mask, input_type
-# 3. 应用全连接层
+
 class Classifier(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(Classifier, self).__init__()
@@ -268,10 +265,8 @@ class myConvBertModel(nn.Module):
         # 加载预训练的 ConvBERT 模型
         config = ConvBertConfig.from_pretrained("convbert-base", output_hidden_states=True)
 
-        # 加载ConvBERT模型
         self.convbert = ConvBertModel.from_pretrained('convbert-base', config=config)
 
-        # 打开参数
         for param in self.convbert.parameters():
             param.requires_grad = True
         self.dropout = nn.Dropout(p=0.1)  # Add a dropout layer
@@ -332,7 +327,7 @@ class FinalModel(nn.Module):
         for sub1, sub2 in zip(split_tensor1, split_tensor2):
             fused_sub1, fused_sub2 = self.bi_attention(sub1, sub2, attention_mask_v=None, attention_mask_l=None)
             fused_output = torch.cat([fused_sub1, fused_sub2], dim=2).to(device)
-            fused_output = fused_output.transpose(1, 2).to(device)  # 转置为 (5, 1536, 3)
+            fused_output = fused_output.transpose(1, 2).to(device) 
             pool = nn.AdaptiveAvgPool1d(1).to(device)  # 平均池化
             fused_output = pool(fused_output).to(device)
             fused_output = fused_output.transpose(1, 2).to(device)
@@ -343,7 +338,7 @@ class FinalModel(nn.Module):
             fused_outputs.append(fused_output)
             
         fused_outputs = torch.cat(fused_outputs, dim=0)
-        # 分类
+     
         logits = self.classifier(fused_outputs)
         return logits
 
@@ -364,7 +359,7 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
 
         start_idx = idx * batch_size
         end_idx = (idx + 1) * batch_size - 1
-        if end_idx >= true_graph_num: end_idx = true_graph_num - 1  # 如果索引超过
+        if end_idx >= true_graph_num: end_idx = true_graph_num - 1  
         graphs = train_graphs[start_idx:end_idx + 1]  
         graphs_sub = []
         for i, graph in enumerate(graphs):
@@ -378,10 +373,8 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
                 while check_batch_graphs_nodes(selected):
                     selected = random.sample(graphs, ym_select_sub_num)
                 batch_subgraphs.extend(selected)
-            # 前向传播
             outputs = model(batch_subgraphs, train_input_ids, train_input_masks, train_input_types)
             loss = criterion(outputs, train_labels)
-            # 反向传播和优化
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -389,7 +382,7 @@ def train_final_model(model, train_graphs, train_loader, criterion, optimizer, d
     return loss.item()
 
 def test_final_model(model, test_graphs, test_loader, device, csv_path):
-    model.eval()  # 设置模型为评估模式
+    model.eval()  
     correct = 0
     total = 0
     y_true = []
@@ -404,15 +397,15 @@ def test_final_model(model, test_graphs, test_loader, device, csv_path):
 
             start_idx = idx * batch_size
             end_idx = (idx + 1) * batch_size - 1
-            if end_idx >= true_graph_num: end_idx = true_graph_num - 1  # 如果索引超过
-            graphs = test_graphs[start_idx:end_idx + 1]  # 提取该范围内的 graph 列表
+            if end_idx >= true_graph_num: end_idx = true_graph_num - 1  
+            graphs = test_graphs[start_idx:end_idx + 1]  
             graphs_sub = []
             for i, graph in enumerate(graphs):
                 subgraphs = sum([division_func(graph, features_func, hash_func, num_group)], start=[])
                 graphs_sub.append(subgraphs)
 
             test_labels = test_labels.cpu().numpy()
-            y_true.extend(test_labels)  # 关键操作
+            y_true.extend(test_labels)  
 
             vote = [
                 {
@@ -423,7 +416,7 @@ def test_final_model(model, test_graphs, test_loader, device, csv_path):
                 }
                 for _ in range(batch_size)
             ]
-            for pos in range(iters_per_epoch):  # 添加投票机制，至少两个预测为坏图就是坏图
+            for pos in range(iters_per_epoch):  
                 batch_subgraphs = []
                 for subgraphs in graphs_sub:
                     selected = random.sample(subgraphs, ym_select_sub_num)
@@ -433,11 +426,10 @@ def test_final_model(model, test_graphs, test_loader, device, csv_path):
                 # 前向传播
                 outputs = model(batch_subgraphs, test_input_ids, test_input_masks, test_input_types)
 
-                # 计算预测结果
                 scores = nn.functional.softmax(outputs, dim=1)[:, 1].cpu().numpy()
                 _, predicted = torch.max(outputs, 1)
                 predicted = predicted.cpu().numpy()
-                # 更新 vote 数组
+              
                 for i in range(batch_size):
                     if predicted[i] == 0:
                         vote[i]['0count'] += 1
@@ -452,9 +444,8 @@ def test_final_model(model, test_graphs, test_loader, device, csv_path):
                 else :
                     y_pred.extend([0])
                     y_scores.extend([vote[i]['0scores']])
-    # 计算混淆矩阵
+
     cm = confusion_matrix(y_true, y_pred)
-    # 动态处理不同矩阵形状
     if cm.shape == (2, 2):
         tn, fp, fn, tp = cm.ravel()
     elif cm.shape == (1, 1):
@@ -563,12 +554,12 @@ def find_min_divisor(n,nn):
     n_nn_min = min(nn,n-nn)
     return min(n_nn_min,5)
 
-torch.cuda.empty_cache() # 释放 GPU 缓存
+torch.cuda.empty_cache() 
 
 csv_file_path = "path.csv"  # 替换为你的 CSV 文件路径
 data = pd.read_csv(csv_file_path)
 graphs = []
-true_graph_num = 0 #记录有几个有效图
+true_graph_num = 0
 bad_graph_num = 0
 start_time = time.time()
 for index, row in data.iterrows():
@@ -591,7 +582,7 @@ input_types = []  # segment ids
 input_masks = []  # attention mask
 label = []
 dataprocess(csv_file_path, input_ids, input_types, input_masks, label)
-#划分数据集
+
 train_graphs, test_graphs, train_input_ids, test_input_ids, train_input_types, test_input_types, \
 train_input_masks, test_input_masks, train_labels, test_labels\
     =separate_data(graphs, input_ids, input_types, input_masks, label, seed, fold_idx, fold_n)
@@ -611,18 +602,17 @@ test_data = TensorDataset(torch.tensor(test_input_ids).to(device),
 test_sampler = SequentialSampler(test_data)
 test_loader = DataLoader(test_data, sampler=test_sampler, batch_size=batch_size)
 
-#加载模型
 input_dim = train_graphs[0].node_features.shape[1]
 gnn_model = GraphCNN(num_layers, num_mlp_layers, input_dim, hidden_dim,
                         num_classes, final_dropout, learn_eps, graph_pooling_type,
                         neighbor_pooling_type, device).to(device)
 bert_model = myConvBertModel().to(device)
-model = FinalModel(gnn_model, bert_model, gnn_hidden_dim=768, bert_hidden_dim=768, num_classes=2)
+model = FinalModel(gnn_model, bert_model, gnn_hidden_dim=input_dim, bert_hidden_dim=input_dim, num_classes=2) # Setting the input_dim according to the model，such as 768
 model.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 result_save_path = 'result.csv'
-# 开始训练
+
 best = 0
 torch.cuda.empty_cache()
 for epoch in range(num_epochs):
